@@ -1,0 +1,202 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// MODELO DE DADOS - CLIENTFLOW (FASE 1 - MVP)
+// ============================================
+
+/// Utilizador da aplicação (autenticação)
+model User {
+  id           String    @id @default(uuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  role         Role      @default(MEMBER)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  
+  // Refresh tokens para autenticação
+  refreshTokens RefreshToken[]
+  
+  // Entidades associadas ao utilizador
+  clients      Client[]
+  contacts     Contact[]
+  notes        Note[]
+  tasks        Task[]
+  
+  // Logs de auditoria
+  auditLogs    AuditLog[]
+
+  @@index([email])
+}
+
+/// Tokens de refresh para sessões persistentes
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([token])
+}
+
+/// Cliente (entidade central do CRM)
+model Client {
+  id          String        @id @default(uuid())
+  name        String
+  company     String?
+  email       String?
+  phone       String?
+  address     String?
+  status      ClientStatus  @default(PROSPECT)
+  generalNotes String?       @map("notes")
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  
+  // Relacionamentos
+  contacts    Contact[]
+  notes       Note[]
+  tasks       Task[]
+  statusHistory StatusChange[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([name])
+  @@index([company])
+  @@index([email])
+}
+
+/// Estados possíveis de um cliente
+enum ClientStatus {
+  PROSPECT
+  ACTIVE
+  INACTIVE
+  LOST
+}
+
+/// Histórico de mudanças de estado do cliente
+model StatusChange {
+  id          String      @id @default(uuid())
+  clientId    String
+  client      Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  fromStatus  ClientStatus?
+  toStatus    ClientStatus
+  changedAt   DateTime    @default(now())
+  changedBy   String
+  notes       String?
+
+  @@index([clientId])
+}
+
+/// Contacto/interação com cliente
+model Contact {
+  id          String      @id @default(uuid())
+  type        ContactType
+  date        DateTime
+  description String
+  clientId    String
+  client      Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime    @default(now())
+
+  @@index([clientId])
+  @@index([userId])
+  @@index([date])
+}
+
+/// Tipos de contacto
+enum ContactType {
+  CALL
+  EMAIL
+  MEETING
+  MESSAGE
+  OTHER
+}
+
+/// Nota associada a cliente
+model Note {
+  id        String    @id @default(uuid())
+  content   String
+  clientId  String
+  client    Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([clientId])
+  @@index([userId])
+}
+
+/// Tarefa
+model Task {
+  id          String      @id @default(uuid())
+  title       String
+  description String?
+  dueDate     DateTime?
+  status      TaskStatus  @default(PENDING)
+  priority    Priority    @default(MEDIUM)
+  clientId    String?
+  client      Client?     @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([userId])
+  @@index([clientId])
+  @@index([status])
+  @@index([dueDate])
+}
+
+/// Estados da tarefa
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}
+
+/// Prioridade da tarefa
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+/// Log de auditoria para ações importantes
+model AuditLog {
+  id        String   @id @default(uuid())
+  action    String
+  entity    String
+  entityId  String?
+  details   Json?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([entity])
+}
+
+/// Papéis de utilizador (RBAC - Fase 2)
+enum Role {
+  OWNER
+  ADMIN
+  MEMBER
+}
